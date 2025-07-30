@@ -48,6 +48,9 @@ const Header = () => {
               {category.name}
             </Link>
           ))}
+          <Link to="/admin/dashboard" className="text-muted-foreground hover:text-primary transition-colors">
+            Admin
+          </Link>
         </nav>
 
         {/* Search */}
