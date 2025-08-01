@@ -2,27 +2,79 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FileText, Tags, MessageSquare, Eye, Users, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const AdminDashboard = () => {
-  const stats = [
-    { title: "Total Posts", value: "24", icon: FileText, color: "text-blue-600" },
-    { title: "Categories", value: "8", icon: Tags, color: "text-green-600" },
-    { title: "Comments", value: "142", icon: MessageSquare, color: "text-purple-600" },
-    { title: "Total Views", value: "12,847", icon: Eye, color: "text-orange-600" },
-    { title: "Active Users", value: "1,234", icon: Users, color: "text-pink-600" },
-    { title: "Growth", value: "+12%", icon: TrendingUp, color: "text-emerald-600" },
-  ];
+  const [stats, setStats] = useState({
+    totalPosts: 0,
+    totalCategories: 0,
+    totalComments: 0,
+    pendingComments: 0
+  });
+  const [recentPosts, setRecentPosts] = useState<any[]>([]);
+  const [recentComments, setRecentComments] = useState<any[]>([]);
 
-  const recentPosts = [
-    { title: "Getting Started with React", status: "Published", views: 234 },
-    { title: "Advanced TypeScript Patterns", status: "Draft", views: 0 },
-    { title: "Building Modern UIs", status: "Published", views: 189 },
-  ];
+  useEffect(() => {
+    fetchStats();
+  }, []);
 
-  const recentComments = [
-    { author: "John Doe", post: "React Best Practices", content: "Great article! Very helpful..." },
-    { author: "Jane Smith", post: "TypeScript Tips", content: "Thanks for sharing this..." },
-    { author: "Mike Johnson", post: "CSS Grid Guide", content: "Could you explain more about..." },
+  const fetchStats = async () => {
+    try {
+      // Fetch posts count
+      const { count: postsCount } = await supabase
+        .from('blogs')
+        .select('*', { count: 'exact', head: true });
+
+      // Fetch categories count
+      const { count: categoriesCount } = await supabase
+        .from('categories')
+        .select('*', { count: 'exact', head: true });
+
+      // Fetch comments count
+      const { count: commentsCount } = await supabase
+        .from('comments')
+        .select('*', { count: 'exact', head: true });
+
+      // Fetch pending comments count
+      const { count: pendingCount } = await supabase
+        .from('comments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      setStats({
+        totalPosts: postsCount || 0,
+        totalCategories: categoriesCount || 0,
+        totalComments: commentsCount || 0,
+        pendingComments: pendingCount || 0
+      });
+
+      // Fetch recent posts
+      const { data: posts } = await supabase
+        .from('blogs')
+        .select('id, title, created_at')
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      // Fetch recent comments
+      const { data: comments } = await supabase
+        .from('comments')
+        .select('id, name, content, created_at, blogs(title)')
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      setRecentPosts(posts || []);
+      setRecentComments(comments || []);
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+    }
+  };
+
+  const statsData = [
+    { title: "Total Posts", value: stats.totalPosts.toString(), icon: FileText, color: "text-blue-600" },
+    { title: "Categories", value: stats.totalCategories.toString(), icon: Tags, color: "text-green-600" },
+    { title: "Comments", value: stats.totalComments.toString(), icon: MessageSquare, color: "text-purple-600" },
+    { title: "Pending", value: stats.pendingComments.toString(), icon: Eye, color: "text-orange-600" },
   ];
 
   return (
@@ -35,8 +87,8 @@ const AdminDashboard = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {stats.map((stat) => (
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {statsData.map((stat) => (
           <Card key={stat.title} className="hover:shadow-lg transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
@@ -60,21 +112,19 @@ const AdminDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentPosts.map((post, index) => (
-                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+              {recentPosts.map((post) => (
+                <div key={post.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
                   <div>
                     <p className="font-medium">{post.title}</p>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        post.status === 'Published' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {post.status}
-                      </span>
-                      <span>{post.views} views</span>
+                      <span>{new Date(post.created_at).toLocaleDateString()}</span>
                     </div>
                   </div>
                 </div>
               ))}
+              {recentPosts.length === 0 && (
+                <p className="text-sm text-muted-foreground">No posts yet</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -89,15 +139,20 @@ const AdminDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentComments.map((comment, index) => (
-                <div key={index} className="p-3 rounded-lg bg-muted/30">
+              {recentComments.map((comment) => (
+                <div key={comment.id} className="p-3 rounded-lg bg-muted/30">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="font-medium text-sm">{comment.author}</p>
-                    <span className="text-xs text-muted-foreground">{comment.post}</span>
+                    <p className="font-medium text-sm">{comment.name}</p>
+                    <span className="text-xs text-muted-foreground">{comment.blogs?.title}</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">{comment.content}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {comment.content.length > 50 ? comment.content.substring(0, 50) + "..." : comment.content}
+                  </p>
                 </div>
               ))}
+              {recentComments.length === 0 && (
+                <p className="text-sm text-muted-foreground">No comments yet</p>
+              )}
             </div>
           </CardContent>
         </Card>

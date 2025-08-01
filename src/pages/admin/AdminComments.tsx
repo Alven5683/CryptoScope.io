@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,47 +29,49 @@ import {
   Calendar,
   Filter 
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const AdminComments = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [comments, setComments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  // Mock data - replace with actual data from Supabase
-  const comments = [
-    {
-      id: "1",
-      author: "John Doe",
-      email: "john@example.com",
-      content: "This is a great article! I learned a lot from the examples you provided. Thank you for sharing your knowledge.",
-      postTitle: "Getting Started with React Hooks",
-      status: "pending",
-      createdAt: "2024-01-15T10:30:00Z",
-    },
-    {
-      id: "2",
-      author: "Jane Smith",
-      email: "jane@example.com",
-      content: "Could you elaborate more on the useEffect cleanup function? I'm having trouble understanding when it gets called.",
-      postTitle: "Advanced React Patterns",
-      status: "approved",
-      createdAt: "2024-01-14T14:20:00Z",
-    },
-    {
-      id: "3",
-      author: "Mike Johnson",
-      email: "mike@example.com",
-      content: "Spam comment with links...",
-      postTitle: "Building Modern UIs",
-      status: "rejected",
-      createdAt: "2024-01-13T09:15:00Z",
-    },
-  ];
+  useEffect(() => {
+    fetchComments();
+  }, []);
+
+  const fetchComments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .select(`
+          *,
+          blogs(title)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setComments(data || []);
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch comments",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredComments = comments.filter(comment => {
     const matchesSearch = 
-      comment.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      comment.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       comment.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      comment.postTitle.toLowerCase().includes(searchTerm.toLowerCase());
+      (comment.blogs?.title || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesFilter = filterStatus === "all" || comment.status === filterStatus;
     
@@ -89,16 +91,79 @@ const AdminComments = () => {
     }
   };
 
-  const handleApprove = (id: string) => {
-    console.log("Approve comment:", id);
+  const handleApprove = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .update({ status: 'approved' })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Comment approved successfully",
+      });
+
+      fetchComments();
+    } catch (error) {
+      console.error('Error approving comment:', error);
+      toast({
+        title: "Error",
+        description: "Failed to approve comment",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleReject = (id: string) => {
-    console.log("Reject comment:", id);
+  const handleReject = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .update({ status: 'rejected' })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Comment rejected successfully",
+      });
+
+      fetchComments();
+    } catch (error) {
+      console.error('Error rejecting comment:', error);
+      toast({
+        title: "Error",
+        description: "Failed to reject comment",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDelete = (id: string) => {
-    console.log("Delete comment:", id);
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Comment deleted successfully",
+      });
+
+      fetchComments();
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete comment",
+        variant: "destructive",
+      });
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -117,6 +182,10 @@ const AdminComments = () => {
     approved: comments.filter(c => c.status === "approved").length,
     rejected: comments.filter(c => c.status === "rejected").length,
   };
+
+  if (loading) {
+    return <div className="p-6">Loading...</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -215,7 +284,7 @@ const AdminComments = () => {
                   <TableRow key={comment.id}>
                     <TableCell>
                       <div>
-                        <div className="font-medium">{comment.author}</div>
+                        <div className="font-medium">{comment.name}</div>
                         <div className="text-sm text-muted-foreground">{comment.email}</div>
                       </div>
                     </TableCell>
@@ -235,11 +304,11 @@ const AdminComments = () => {
                           <div className="space-y-4">
                             <div>
                               <label className="text-sm font-medium">Author:</label>
-                              <p>{comment.author} ({comment.email})</p>
+                              <p>{comment.name} ({comment.email})</p>
                             </div>
                             <div>
                               <label className="text-sm font-medium">Post:</label>
-                              <p>{comment.postTitle}</p>
+                              <p>{comment.blogs?.title || 'Unknown Post'}</p>
                             </div>
                             <div>
                               <label className="text-sm font-medium">Comment:</label>
@@ -247,13 +316,13 @@ const AdminComments = () => {
                             </div>
                             <div>
                               <label className="text-sm font-medium">Date:</label>
-                              <p>{formatDate(comment.createdAt)}</p>
+                              <p>{formatDate(comment.created_at)}</p>
                             </div>
                           </div>
                         </DialogContent>
                       </Dialog>
                     </TableCell>
-                    <TableCell className="font-medium">{comment.postTitle}</TableCell>
+                    <TableCell className="font-medium">{comment.blogs?.title || 'Unknown Post'}</TableCell>
                     <TableCell>
                       <Badge className={getStatusColor(comment.status)}>
                         {comment.status}
@@ -262,7 +331,7 @@ const AdminComments = () => {
                     <TableCell>
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
                         <Calendar className="h-3 w-3" />
-                        {formatDate(comment.createdAt)}
+                        {formatDate(comment.created_at)}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
@@ -301,6 +370,11 @@ const AdminComments = () => {
                 ))}
               </TableBody>
             </Table>
+            {filteredComments.length === 0 && (
+              <div className="p-6 text-center text-muted-foreground">
+                No comments found
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

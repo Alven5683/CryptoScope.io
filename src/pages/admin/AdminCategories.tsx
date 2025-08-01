@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,38 +20,90 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus, Edit, Trash2, Tag } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const AdminCategories = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [categoryName, setCategoryName] = useState("");
   const [categorySlug, setCategorySlug] = useState("");
   const [editingCategory, setEditingCategory] = useState<any>(null);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  // Mock data - replace with actual data from Supabase
-  const categories = [
-    { id: "1", name: "React", slug: "react", postCount: 12, color: "#61DAFB" },
-    { id: "2", name: "TypeScript", slug: "typescript", postCount: 8, color: "#3178C6" },
-    { id: "3", name: "CSS", slug: "css", postCount: 15, color: "#1572B6" },
-    { id: "4", name: "JavaScript", slug: "javascript", postCount: 20, color: "#F7DF1E" },
-    { id: "5", name: "Next.js", slug: "nextjs", postCount: 6, color: "#000000" },
-  ];
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select(`
+          *,
+          blogs!blogs_category_id_fkey(count)
+        `);
+
+      if (error) throw error;
+      setCategories(data || []);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch categories",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (editingCategory) {
-      // Update category logic
-      console.log("Update category:", { id: editingCategory.id, name: categoryName, slug: categorySlug });
-    } else {
-      // Create category logic
-      console.log("Create category:", { name: categoryName, slug: categorySlug });
+    try {
+      if (editingCategory) {
+        // Update existing category
+        const { error } = await supabase
+          .from('categories')
+          .update({ name: categoryName, slug: categorySlug })
+          .eq('id', editingCategory.id);
+
+        if (error) throw error;
+
+        toast({
+          title: "Success",
+          description: "Category updated successfully",
+        });
+      } else {
+        // Create new category
+        const { error } = await supabase
+          .from('categories')
+          .insert([{ name: categoryName, slug: categorySlug }]);
+
+        if (error) throw error;
+
+        toast({
+          title: "Success",
+          description: "Category created successfully",
+        });
+      }
+      
+      // Reset form and refresh data
+      setCategoryName("");
+      setCategorySlug("");
+      setEditingCategory(null);
+      setIsDialogOpen(false);
+      fetchCategories();
+    } catch (error) {
+      console.error('Error saving category:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save category",
+        variant: "destructive",
+      });
     }
-    
-    // Reset form
-    setCategoryName("");
-    setCategorySlug("");
-    setEditingCategory(null);
-    setIsDialogOpen(false);
   };
 
   const handleEdit = (category: any) => {
@@ -61,9 +113,29 @@ const AdminCategories = () => {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    // Handle delete logic
-    console.log("Delete category:", id);
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Category deleted successfully",
+      });
+
+      fetchCategories();
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete category",
+        variant: "destructive",
+      });
+    }
   };
 
   const generateSlug = (name: string) => {
@@ -79,6 +151,10 @@ const AdminCategories = () => {
       setCategorySlug(generateSlug(name));
     }
   };
+
+  if (loading) {
+    return <div className="p-6">Loading...</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -148,8 +224,8 @@ const AdminCategories = () => {
           <Card key={category.id} className="hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <Tag className="h-5 w-5" style={{ color: category.color }} />
-                <Badge variant="secondary">{category.postCount} posts</Badge>
+                <Tag className="h-5 w-5 text-primary" />
+                <Badge variant="secondary">0 posts</Badge>
               </div>
             </CardHeader>
             <CardContent>
@@ -181,7 +257,7 @@ const AdminCategories = () => {
                   <TableRow key={category.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
-                        <Tag className="h-4 w-4" style={{ color: category.color }} />
+                        <Tag className="h-4 w-4 text-primary" />
                         {category.name}
                       </div>
                     </TableCell>
@@ -189,16 +265,13 @@ const AdminCategories = () => {
                       /{category.slug}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{category.postCount}</Badge>
+                      <Badge variant="secondary">0</Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <div
-                          className="w-4 h-4 rounded-full border"
-                          style={{ backgroundColor: category.color }}
-                        />
+                        <div className="w-4 h-4 rounded-full bg-primary" />
                         <span className="text-sm text-muted-foreground">
-                          {category.color}
+                          Primary
                         </span>
                       </div>
                     </TableCell>
@@ -225,6 +298,11 @@ const AdminCategories = () => {
                 ))}
               </TableBody>
             </Table>
+            {categories.length === 0 && (
+              <div className="p-6 text-center text-muted-foreground">
+                No categories found
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
